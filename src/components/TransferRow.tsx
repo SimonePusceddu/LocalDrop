@@ -7,6 +7,8 @@ import { colors, spacing } from '../constants/theme';
 interface Props {
   file: SharedFile;
   onRemove?: (id: string) => void;
+  onSave?: (file: SharedFile) => void;
+  onPress?: (file: SharedFile) => void;
 }
 
 function formatSize(bytes: number): string {
@@ -17,19 +19,35 @@ function formatSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-export function TransferRow({ file, onRemove }: Props) {
+export function TransferRow({ file, onRemove, onSave, onPress }: Props) {
+  const isReceived = file.direction === 'received';
+
   return (
     <View style={styles.container}>
-      <FileTypeIcon mimeType={file.mimeType} uri={file.uri} size={44} />
+      <TouchableOpacity
+        style={styles.mainContent}
+        onPress={() => onPress?.(file)}
+        activeOpacity={0.7}
+      >
+        <FileTypeIcon mimeType={file.mimeType} uri={file.uri} size={44} />
 
-      <View style={styles.info}>
-        <Text style={styles.fileName} numberOfLines={1}>
-          {file.name}
-        </Text>
-        <Text style={styles.fileSize}>{formatSize(file.size)}</Text>
-      </View>
+        <View style={styles.info}>
+          <Text style={styles.fileName} numberOfLines={1}>
+            {file.name}
+          </Text>
+          <Text style={styles.fileSize}>{formatSize(file.size)}</Text>
+        </View>
+      </TouchableOpacity>
 
-      {onRemove && (
+      {isReceived && onSave ? (
+        <TouchableOpacity
+          onPress={() => onSave(file)}
+          style={styles.saveButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.saveText}>{'\u2193'}</Text>
+        </TouchableOpacity>
+      ) : onRemove ? (
         <TouchableOpacity
           onPress={() => onRemove(file.id)}
           style={styles.removeButton}
@@ -37,7 +55,7 @@ export function TransferRow({ file, onRemove }: Props) {
         >
           <Text style={styles.removeText}>{'\u2715'}</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -49,6 +67,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 4,
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   info: {
     flex: 1,
@@ -76,5 +99,18 @@ const styles = StyleSheet.create({
     color: colors.status.error,
     fontSize: 14,
     fontWeight: '600',
+  },
+  saveButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accent.blueLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveText: {
+    color: colors.accent.blue,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

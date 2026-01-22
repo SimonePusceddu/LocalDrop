@@ -130,6 +130,7 @@ export function startServer(callbacks: ServerCallbacks): void {
             name: f.name,
             size: f.size,
             mimeType: f.mimeType,
+            direction: f.direction,
             downloadUrl: `/api/files/${encodeURIComponent(f.id)}`,
           })),
         });

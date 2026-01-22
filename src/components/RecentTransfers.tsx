@@ -1,5 +1,8 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
+import * as Sharing from 'expo-sharing';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as FileSystem from 'expo-file-system';
 import { SharedFile } from '../types';
 import { TransferRow } from './TransferRow';
 import { colors, spacing, borderRadius, shadows } from '../constants/theme';
@@ -14,6 +17,36 @@ export function RecentTransfers({ files, onRemoveFile }: Props) {
   const receivedFiles = files.filter((f) => f.direction === 'received');
 
   const isEmpty = files.length === 0;
+
+  const handleSave = async (file: SharedFile) => {
+    try {
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri);
+      } else {
+        Alert.alert('Error', 'Sharing is not available on this device');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to share file');
+    }
+  };
+
+  const handleOpenFile = async (file: SharedFile) => {
+    try {
+      if (Platform.OS === 'android') {
+        const contentUri = await FileSystem.getContentUriAsync(file.uri);
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+          data: contentUri,
+          flags: 1,
+          type: file.mimeType,
+        });
+      } else {
+        // iOS fallback - use sharing
+        await Sharing.shareAsync(file.uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to open file');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -46,6 +79,7 @@ export function RecentTransfers({ files, onRemoveFile }: Props) {
                   key={file.id}
                   file={file}
                   onRemove={onRemoveFile}
+                  onPress={handleOpenFile}
                 />
               ))}
             </View>
@@ -65,7 +99,8 @@ export function RecentTransfers({ files, onRemoveFile }: Props) {
                 <TransferRow
                   key={file.id}
                   file={file}
-                  onRemove={onRemoveFile}
+                  onSave={handleSave}
+                  onPress={handleOpenFile}
                 />
               ))}
             </View>

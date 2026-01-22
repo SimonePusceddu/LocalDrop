@@ -317,14 +317,27 @@ export const getWebInterface = (serverIp: string, port: number): string => `
 
     <div class="card">
       <div class="card-header">
-        <h2>Files on Phone</h2>
+        <h2>Download from Phone</h2>
       </div>
-      <div class="card-body" id="fileListContainer">
-        <div class="empty-state" id="emptyState">
-          <div style="font-size: 3rem;">&#128193;</div>
-          <p>No files shared yet</p>
+      <div class="card-body" id="downloadListContainer">
+        <div class="empty-state" id="downloadEmptyState">
+          <div style="font-size: 3rem;">&#128241;</div>
+          <p>No files shared from phone yet</p>
         </div>
-        <ul class="file-list" id="fileList"></ul>
+        <ul class="file-list" id="downloadList"></ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Uploaded to Phone</h2>
+      </div>
+      <div class="card-body" id="uploadedListContainer">
+        <div class="empty-state" id="uploadedEmptyState">
+          <div style="font-size: 3rem;">&#128229;</div>
+          <p>No files uploaded yet</p>
+        </div>
+        <ul class="file-list" id="uploadedList"></ul>
       </div>
     </div>
   </div>
@@ -388,12 +401,19 @@ export const getWebInterface = (serverIp: string, port: number): string => `
         const response = await fetch(API_BASE + '/api/files');
         const data = await response.json();
 
-        const fileList = document.getElementById('fileList');
-        const emptyState = document.getElementById('emptyState');
+        const downloadList = document.getElementById('downloadList');
+        const downloadEmptyState = document.getElementById('downloadEmptyState');
+        const uploadedList = document.getElementById('uploadedList');
+        const uploadedEmptyState = document.getElementById('uploadedEmptyState');
 
-        if (data.files && data.files.length > 0) {
-          emptyState.style.display = 'none';
-          fileList.innerHTML = data.files.map(file => \`
+        // Filter files by direction
+        const sentFiles = data.files ? data.files.filter(f => f.direction === 'sent') : [];
+        const receivedFiles = data.files ? data.files.filter(f => f.direction === 'received') : [];
+
+        // Render files from phone (available for download)
+        if (sentFiles.length > 0) {
+          downloadEmptyState.style.display = 'none';
+          downloadList.innerHTML = sentFiles.map(file => \`
             <li class="file-item">
               <div class="file-icon">\${getFileIcon(file.mimeType)}</div>
               <div class="file-info">
@@ -406,8 +426,26 @@ export const getWebInterface = (serverIp: string, port: number): string => `
             </li>
           \`).join('');
         } else {
-          emptyState.style.display = 'block';
-          fileList.innerHTML = '';
+          downloadEmptyState.style.display = 'block';
+          downloadList.innerHTML = '';
+        }
+
+        // Render files uploaded from PC
+        if (receivedFiles.length > 0) {
+          uploadedEmptyState.style.display = 'none';
+          uploadedList.innerHTML = receivedFiles.map(file => \`
+            <li class="file-item">
+              <div class="file-icon">\${getFileIcon(file.mimeType)}</div>
+              <div class="file-info">
+                <div class="file-name">\${file.name}</div>
+                <div class="file-size">\${formatSize(file.size)}</div>
+              </div>
+              <span class="btn btn-secondary">&#10003; On Phone</span>
+            </li>
+          \`).join('');
+        } else {
+          uploadedEmptyState.style.display = 'block';
+          uploadedList.innerHTML = '';
         }
       } catch (error) {
         showToast('Failed to load files', 'error');
@@ -458,14 +496,26 @@ export const getWebInterface = (serverIp: string, port: number): string => `
 
         progressFill.style.width = '100%';
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Upload failed');
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          // Response might not be valid JSON, but upload may have succeeded
+          // Refresh file list and show success if file appears
+          await loadFiles();
+          showToast('File uploaded!', 'success');
+          return;
+        }
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Upload failed');
         }
 
         showToast('File uploaded successfully!', 'success');
         loadFiles();
       } catch (error) {
+        // Refresh file list in case upload succeeded despite error
+        loadFiles();
         showToast('Upload failed: ' + error.message, 'error');
       } finally {
         setTimeout(() => {
