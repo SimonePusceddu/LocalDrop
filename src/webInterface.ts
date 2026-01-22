@@ -358,6 +358,31 @@ export const getWebInterface = (serverIp: string, port: number): string => `
       setTimeout(() => toast.classList.remove('show'), 3000);
     }
 
+    async function downloadFile(downloadUrl, filename) {
+      try {
+        showToast('Downloading...', 'info');
+        const response = await fetch(API_BASE + downloadUrl);
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Download failed');
+        }
+
+        // Use data URI directly - browser handles the decoding
+        const a = document.createElement('a');
+        a.href = data.dataUri;
+        a.download = data.filename || filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        showToast('Download complete!', 'success');
+      } catch (error) {
+        showToast('Download failed: ' + error.message, 'error');
+        console.error('Download error:', error);
+      }
+    }
+
     async function loadFiles() {
       try {
         const response = await fetch(API_BASE + '/api/files');
@@ -375,9 +400,9 @@ export const getWebInterface = (serverIp: string, port: number): string => `
                 <div class="file-name">\${file.name}</div>
                 <div class="file-size">\${formatSize(file.size)}</div>
               </div>
-              <a href="\${file.downloadUrl}" download="\${file.name}" class="btn btn-primary">
+              <button onclick="downloadFile('\${file.downloadUrl}', '\${file.name}')" class="btn btn-primary">
                 &#11015; Download
-              </a>
+              </button>
             </li>
           \`).join('');
         } else {
@@ -391,36 +416,52 @@ export const getWebInterface = (serverIp: string, port: number): string => `
     }
 
     async function uploadFile(file) {
-      const formData = new FormData();
-      formData.append('file', file);
-
       const progressBar = document.getElementById('uploadProgress');
       const progressFill = document.getElementById('progressFill');
       progressBar.classList.add('active');
       progressFill.style.width = '0%';
 
       try {
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percent = (e.loaded / e.total) * 100;
-            progressFill.style.width = percent + '%';
-          }
-        });
-
-        await new Promise((resolve, reject) => {
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(xhr.response);
-            } else {
-              reject(new Error('Upload failed'));
+        // Read file as base64
+        const base64Data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            // Remove data URL prefix (e.g., "data:image/png;base64,")
+            const base64 = result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = reject;
+          reader.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const percent = (e.loaded / e.total) * 50; // First 50% is reading
+              progressFill.style.width = percent + '%';
             }
           };
-          xhr.onerror = () => reject(new Error('Upload failed'));
-          xhr.open('POST', API_BASE + '/api/upload');
-          xhr.send(formData);
+          reader.readAsDataURL(file);
         });
+
+        progressFill.style.width = '50%';
+
+        // Send as JSON
+        const response = await fetch(API_BASE + '/api/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            data: base64Data,
+          }),
+        });
+
+        progressFill.style.width = '100%';
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Upload failed');
+        }
 
         showToast('File uploaded successfully!', 'success');
         loadFiles();

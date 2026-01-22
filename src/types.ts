@@ -1,3 +1,5 @@
+export type TransferDirection = 'sent' | 'received';
+
 export interface SharedFile {
   id: string;
   name: string;
@@ -5,6 +7,7 @@ export interface SharedFile {
   size: number;
   mimeType: string;
   addedAt: number;
+  direction: TransferDirection;
 }
 
 export interface ServerStatus {

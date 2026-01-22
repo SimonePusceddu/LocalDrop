@@ -22,7 +22,9 @@
   },
   "homepage": "https://github.com/SimonePusceddu/LocalDrop#readme",
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
     "expo": "^54.0.31",
+    "expo-clipboard": "~8.0.8",
     "expo-dev-client": "~6.0.20",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.21",
@@ -30,6 +32,7 @@
     "expo-media-library": "~18.2.1",
     "expo-network": "~8.0.8",
     "expo-sharing": "~14.0.8",
+    "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "^3.0.9",
     "react": "^19.2.3",
     "react-native": "^0.83.1",

@@ -68,19 +68,14 @@ async function fileResponse(
       encoding: FileSystem.EncodingType.Base64,
     });
 
-    const headers = {
-      ...corsHeaders(),
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(file.name)}"`,
-    };
+    // Return data URI that browser can use directly
+    const dataUri = `data:${file.mimeType};base64,${fileContent}`;
 
-    httpBridge.respond(
-      requestId,
-      200,
-      file.mimeType,
-      fileContent,
-      headers,
-      true // isBase64
-    );
+    jsonResponse(requestId, {
+      success: true,
+      filename: file.name,
+      dataUri: dataUri,
+    });
   } catch (error) {
     jsonResponse(requestId, { success: false, error: 'File not found' }, 404);
   }
@@ -163,7 +158,7 @@ export function startServer(callbacks: ServerCallbacks): void {
         return;
       }
 
-      // Route: POST /api/upload - Upload file
+      // Route: POST /api/upload - Upload file (JSON with base64 data)
       if (method === 'POST' && urlPath === '/api/upload') {
         if (!postData) {
           jsonResponse(requestId, { success: false, error: 'No data received' }, 400);
@@ -171,24 +166,20 @@ export function startServer(callbacks: ServerCallbacks): void {
         }
 
         try {
-          // Parse multipart form data
-          const boundary = extractBoundary(request);
-          if (!boundary) {
-            jsonResponse(requestId, { success: false, error: 'Invalid content type' }, 400);
-            return;
-          }
+          // Parse JSON body
+          const body = JSON.parse(postData);
+          const { filename, mimeType, data } = body;
 
-          const parsed = parseMultipart(postData, boundary);
-          if (!parsed) {
-            jsonResponse(requestId, { success: false, error: 'Failed to parse upload' }, 400);
+          if (!data) {
+            jsonResponse(requestId, { success: false, error: 'No file data provided' }, 400);
             return;
           }
 
           // Save file to document directory
-          const fileName = parsed.filename || `upload_${Date.now()}`;
+          const fileName = filename || `upload_${Date.now()}`;
           const filePath = `${FileSystem.documentDirectory}${fileName}`;
 
-          await FileSystem.writeAsStringAsync(filePath, parsed.data, {
+          await FileSystem.writeAsStringAsync(filePath, data, {
             encoding: FileSystem.EncodingType.Base64,
           });
 
@@ -202,15 +193,16 @@ export function startServer(callbacks: ServerCallbacks): void {
             name: fileName,
             uri: filePath,
             size: fileSize,
-            mimeType: parsed.mimeType || getMimeType(fileName),
+            mimeType: mimeType || getMimeType(fileName),
             addedAt: Date.now(),
+            direction: 'received',
           };
 
           callbacks.addFile(newFile);
           jsonResponse(requestId, { success: true, file: newFile });
-        } catch (uploadError) {
+        } catch (uploadError: any) {
           console.error('Upload error:', uploadError);
-          jsonResponse(requestId, { success: false, error: 'Upload failed' }, 500);
+          jsonResponse(requestId, { success: false, error: `Upload failed: ${uploadError?.message || uploadError}` }, 500);
         }
         return;
       }
@@ -254,6 +246,29 @@ interface ParsedMultipart {
   data: string;
 }
 
+// Base64 encoding for React Native (btoa polyfill)
+function binaryToBase64(binaryString: string): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let result = '';
+  let i = 0;
+  const len = binaryString.length;
+
+  while (i < len) {
+    const a = binaryString.charCodeAt(i++) & 0xff;
+    const b = i < len ? binaryString.charCodeAt(i++) & 0xff : 0;
+    const c = i < len ? binaryString.charCodeAt(i++) & 0xff : 0;
+
+    const triplet = (a << 16) | (b << 8) | c;
+
+    result += chars.charAt((triplet >> 18) & 0x3f);
+    result += chars.charAt((triplet >> 12) & 0x3f);
+    result += i > len + 1 ? '=' : chars.charAt((triplet >> 6) & 0x3f);
+    result += i > len ? '=' : chars.charAt(triplet & 0x3f);
+  }
+
+  return result;
+}
+
 function parseMultipart(data: string, boundary: string): ParsedMultipart | null {
   try {
     const parts = data.split(`--${boundary}`);
@@ -280,13 +295,8 @@ function parseMultipart(data: string, boundary: string): ParsedMultipart | null 
           fileData = fileData.substring(0, endIndex);
         }
 
-        // Convert to base64 if not already
-        // The browser sends binary data, we need to handle it
-        const base64Data = btoa(
-          fileData.split('').map(char =>
-            String.fromCharCode(char.charCodeAt(0) & 0xff)
-          ).join('')
-        );
+        // Convert binary string to base64
+        const base64Data = binaryToBase64(fileData);
 
         return {
           filename,
